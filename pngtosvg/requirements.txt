@@ -1,0 +1,4 @@
+# Pure-Python potrace (no C libs). Use pypotrace instead if you have potrace C libs installed.
+potracer>=0.0.4
+numpy>=1.20.0
+Pillow>=9.0.0

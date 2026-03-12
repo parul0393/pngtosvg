@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="mainGradient" x1="512" y1="368" x2="512" y2="672" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00b4b4"/>
+      <stop offset="25%" stop-color="#0090b0"/>
+      <stop offset="50%" stop-color="#0060a0"/>
+      <stop offset="75%" stop-color="#003878"/>
+      <stop offset="100%" stop-color="#1a1a30"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="#fafafa"/>
+  
+  <!-- The logo mark - chevron/A shape in diamond -->
+  <!-- Outer diamond frame -->
+  <path d="M512 368 L656 512 L512 656 L368 512 Z" fill="url(#mainGradient)" fill-rule="evenodd"/>
+  
+  <!-- Inner cutout to create the chevron shape -->
+  <!-- Top small chevron (teal part) -->
+  <path d="M512 395 L480 427 L512 459 L544 427 Z" fill="#fafafa"/>
+  
+  <!-- Middle chevron cutout (creates the white space) -->
+  <path d="M440 512 L512 584 L584 512 L555 483 L512 526 L469 483 Z" fill="#fafafa"/>
+  
+  <!-- Text "Aayul" -->
+  <text x="512" y="750" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="500" fill="#1a1a30">Aayul</text>
+</svg>

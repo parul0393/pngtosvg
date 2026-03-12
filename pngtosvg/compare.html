@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PNG vs SVG Comparison</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
+        .container { display: flex; gap: 40px; justify-content: center; align-items: flex-start; }
+        .box { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; }
+        .box h3 { margin-top: 0; }
+        .box img, .box object { max-width: 400px; height: auto; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+    <h1 style="text-align: center;">PNG vs SVG Comparison - newtest1</h1>
+    <div class="container">
+        <div class="box">
+            <h3>Original PNG</h3>
+            <img src="newtest1.png" alt="Original PNG">
+        </div>
+        <div class="box">
+            <h3>Generated SVG</h3>
+            <object data="newtest1.svg" type="image/svg+xml" style="width: 400px;"></object>
+        </div>
+    </div>
+</body>
+</html>

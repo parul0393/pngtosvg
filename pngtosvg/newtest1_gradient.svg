@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="diamondGrad" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#0e9fad"/>
+      <stop offset="100%" stop-color="#0a3e84"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- White background -->
+  <rect width="1024" height="1024" fill="#fdfdfd"/>
+  
+  <!-- Diamond with gradient - blue part -->
+  <path fill="url(#diamondGrad)" d="M0,0 L4,2 L8,7 L15,13 L20,18 L24,23 L30,28 L35,33 L39,37 L38,41 L24,55 L17,49 L3,35 L-1,36 L-6,42 L47,95 L47,97 L55,90 L102,43 L100,38 L96,35 L92,37 L82,46 L49,79 L45,77 L32,64 L38,57 L95,0 L99,2 L137,40 L135,44 L49,130 L46,129 L39,121 L34,117 L27,109 L20,103 L20,101 L18,101 L12,94 L4,87 L-1,82 L-6,77 L-11,72 L-11,70 L-14,69 L-19,64 L-38,45 L-40,40 L-3,3 Z" transform="translate(465,400)"/>
+  
+  <!-- Diamond with gradient - teal part (rendered on top to blend) -->
+  <path fill="url(#diamondGrad)" d="M0,0 L3,0 L10,8 L25,23 L33,17 L38,11 L40,11 L42,7 L44,7 L44,5 L51,0 L55,4 L55,6 L59,8 L65,13 L67,18 L27,58 L23,56 L17,51 L10,43 L-15,18 L-14,14 Z" transform="translate(487,372)"/>
+  
+  <!-- Text "Aayul" -->
+  <path d="M0,0 L15,0 L24,22 L34,46 L47,77 L47,80 L34,80 L27,63 L27,61 L-12,62 L-19,80 L-31,80 L-30,73 L-14,35 L-3,7 Z" fill="#252839" transform="translate(408,563)"/>
+  <path d="M0,0 L17,0 L27,5 L31,10 L33,16 L33,57 L23,57 L23,51 L15,57 L11,59 L-4,59 L-13,53 L-16,48 L-16,36 L-10,28 L-3,24 L4,22 L21,22 L19,14 L14,11 L3,11 L-7,15 L-11,13 L-13,9 L-12,5 Z" fill="#242838" transform="translate(477,586)"/>
+  <path d="M0,0 L13,0 L10,9 L0,33 L-4,43 L-15,70 L-19,76 L-25,80 L-41,80 L-43,79 L-42,73 L-41,69 L-31,69 L-28,68 L-24,60 L-23,53 L-33,30 L-38,19 L-45,3 L-45,1 L-32,1 L-17,37 L-17,40 L-15,40 L-12,30 L-5,12 Z" fill="#262939" transform="translate(560,587)"/>
+  <path d="M0,0 L12,0 L13,39 L17,45 L19,46 L28,46 L33,43 L37,37 L38,0 L50,0 L50,56 L39,56 L38,50 L32,55 L27,57 L14,57 L6,52 L2,46 L0,41 Z" fill="#282a39" transform="translate(581,587)"/>
+  <path d="M0,0 L12,0 L12,86 L0,86 Z" fill="#2c2e3c" transform="translate(645,557)"/>
+  <path d="M0,0 L3,4 L9,19 L15,34 L15,36 L-13,36 L-11,27 L-3,7 Z" fill="#f4f5f6" transform="translate(415,577)"/>
+  <path d="M0,0 L17,0 L17,10 L12,16 L6,19 L-4,19 L-9,15 L-9,6 L-5,2 Z" fill="#f1f2f4" transform="translate(482,617)"/>
+</svg>
