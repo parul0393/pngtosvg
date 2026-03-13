@@ -33,13 +33,20 @@ FREE_TRIAL_LIMIT     = 10
 # ─────────────────────────────────────────
 # TABLE NAMES
 # ─────────────────────────────────────────
+# TBL_API_KEYS         = "api_keys"
+# TBL_USER_API_CREDITS = "user_api_credits"
+# TBL_USER_CREDIT_TX   = "user_credit_transactions"
+# TBL_PAYMENTS         = "payments"
+# TBL_SUBSCRIPTIONS    = "subscriptions"
+# TBL_CONVERSIONS      = "conversions"
+# TBL_PAYLOAD_MAP      = "user_payload_map"
 TBL_API_KEYS         = "api_keys"
-TBL_USER_API_CREDITS = "user_api_credits"
-TBL_USER_CREDIT_TX   = "user_credit_transactions"
-TBL_PAYMENTS         = "payments"
-TBL_SUBSCRIPTIONS    = "subscriptions"
-TBL_CONVERSIONS      = "conversions"
-TBL_PAYLOAD_MAP      = "user_payload_map"
+TBL_USER_API_CREDITS = "app_user_api_credits"
+TBL_USER_CREDIT_TX   = "app_user_credit_transactions"
+TBL_PAYMENTS         = "app_payments"
+TBL_SUBSCRIPTIONS    = "app_subscriptions"
+TBL_CONVERSIONS      = "app_conversions"
+TBL_PAYLOAD_MAP      = "app_user_payload_map"
 
 # ─────────────────────────────────────────
 # CLIENTS
