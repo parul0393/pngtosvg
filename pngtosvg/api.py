@@ -6,41 +6,50 @@ import shutil
 import os
 import uuid
 import logging
+import requests
 from datetime import datetime, timedelta
 import razorpay
 from supabase import create_client, Client
 from .png_to_svg import png_to_svg
-import requests
 
-# -----------------------------
-# Payload Config
-# -----------------------------
-PAYLOAD_URL = "http://localhost:3000/api"
-PAYLOAD_SECRET = "e7be7f67ce829de0fbe6a19c"
-HEADERS = {
-    "Authorization": f"Bearer {PAYLOAD_SECRET}",
-    "Content-Type": "application/json"
-}
-
-# -----------------------------
-# Supabase Config
-# -----------------------------
-SUPABASE_URL = "https://pswlpjqonxynzxsdyjud.supabase.co"
+# ─────────────────────────────────────────
+# CONFIG
+# ─────────────────────────────────────────
+SUPABASE_URL         = "https://pswlpjqonxynzxsdyjud.supabase.co"
 SUPABASE_SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBzd2xwanFvbnh5bnp4c2R5anVkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjAwNzQxMCwiZXhwIjoyMDg3NTgzNDEwfQ.nWsrDi03y4c_Tde4TPoZJ5nUq55zorQPEmivr3UqR5U"
 
+PAYLOAD_URL          = "http://localhost:3000/api"
+PAYLOAD_SECRET       = "e7be7f67ce829de0fbe6a19c"
+PAYLOAD_HEADERS      = {
+    "Authorization": f"Bearer {PAYLOAD_SECRET}",
+    "Content-Type":  "application/json",
+}
+
+RAZORPAY_KEY_ID      = "rzp_test_RmG7hznjlclBga"
+RAZORPAY_KEY_SECRET  = "YvACC6VRdicCORe4qH10Q05l"
+
+FREE_TRIAL_LIMIT     = 10
+
+# ─────────────────────────────────────────
+# TABLE NAMES
+# ─────────────────────────────────────────
+TBL_API_KEYS         = "api_keys"
+TBL_USER_API_CREDITS = "user_api_credits"
+TBL_USER_CREDIT_TX   = "user_credit_transactions"
+TBL_PAYMENTS         = "payments"
+TBL_SUBSCRIPTIONS    = "subscriptions"
+TBL_CONVERSIONS      = "conversions"
+TBL_PAYLOAD_MAP      = "user_payload_map"
+
+# ─────────────────────────────────────────
+# CLIENTS
+# ─────────────────────────────────────────
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+razorpay_client  = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
-# -----------------------------
-# Razorpay Config
-# -----------------------------
-RAZORPAY_KEY_ID = "rzp_test_RmG7hznjlclBga"
-RAZORPAY_KEY_SECRET = "YvACC6VRdicCORe4qH10Q05l"
-
-razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
-
-# -----------------------------
-# FastAPI App
-# -----------------------------
+# ─────────────────────────────────────────
+# APP
+# ─────────────────────────────────────────
 app = FastAPI()
 
 app.add_middleware(
@@ -48,266 +57,411 @@ app.add_middleware(
     allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
 
-# -----------------------------
-# Helper: Get Supabase user from token
-# -----------------------------
+# ─────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────
+
 def get_supabase_user(authorization: str):
     if not authorization:
-        raise HTTPException(status_code=401, detail="Missing token")
-    token = authorization.split(" ")[1]
-    user = supabase.auth.get_user(token)
-    if not user.user:
-        raise HTTPException(status_code=401, detail="Invalid user")
-    return user.user
+        raise HTTPException(status_code=401, detail="Missing authorization token")
+    token = authorization.split(" ")[1] if " " in authorization else authorization
+    result = supabase.auth.get_user(token)
+    if not result.user:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return result.user
 
 
-# -----------------------------
-# Helper: Fetch plan from Payload
-# -----------------------------
-def get_plan_from_payload(plan_id: str):
+def get_payload_user_id(supabase_user_id: str) -> int | None:
+    """Look up Payload integer user ID from our mapping table."""
+    try:
+        result = supabase.table(TBL_PAYLOAD_MAP)\
+            .select("payload_user_id")\
+            .eq("supabase_user_id", supabase_user_id)\
+            .execute()
+        if result.data:
+            return result.data[0]["payload_user_id"]
+        return None
+    except Exception as e:
+        logging.error(f"Payload map lookup error: {e}")
+        return None
+
+
+def get_payload_user(payload_user_id: int) -> dict | None:
+    """Fetch Payload user by integer ID."""
+    try:
+        res = requests.get(
+            f"{PAYLOAD_URL}/users/{payload_user_id}",
+            headers=PAYLOAD_HEADERS,
+            timeout=5,
+        )
+        if res.status_code == 200:
+            return res.json()
+        return None
+    except Exception as e:
+        logging.error(f"Payload user fetch error: {e}")
+        return None
+
+
+def create_payload_user(email: str, full_name: str) -> dict | None:
+    """Create a new user in Payload CMS."""
+    try:
+        res = requests.post(
+            f"{PAYLOAD_URL}/users",
+            headers=PAYLOAD_HEADERS,
+            json={
+                "email":              email,
+                "fullName":           full_name,
+                "password":           uuid.uuid4().hex,
+                "subscriptionStatus": "trial",
+                "usageCount":         0,
+            },
+            timeout=5,
+        )
+        return res.json().get("doc")
+    except Exception as e:
+        logging.error(f"Payload user create error: {e}")
+        return None
+
+
+def update_payload_user(payload_user_id: int, data: dict):
+    """PATCH a Payload user by integer ID."""
+    try:
+        res = requests.patch(
+            f"{PAYLOAD_URL}/users/{payload_user_id}",
+            headers=PAYLOAD_HEADERS,
+            json=data,
+            timeout=5,
+        )
+        if res.status_code not in (200, 201):
+            logging.error(f"Payload update failed: {res.status_code} {res.text}")
+    except Exception as e:
+        logging.error(f"Payload user update error: {e}")
+
+
+def log_to_payload(payload_user_id: int | None, event: str, details: str = ""):
+    """Write a log entry to Payload Logs collection."""
+    try:
+        body = {
+            "event":     event,
+            "details":   details,
+            "createdAt": datetime.utcnow().isoformat(),
+        }
+        if payload_user_id:
+            body["user"] = payload_user_id
+        requests.post(
+            f"{PAYLOAD_URL}/logs",
+            headers=PAYLOAD_HEADERS,
+            json=body,
+            timeout=5,
+        )
+    except Exception as e:
+        logging.error(f"Payload log error: {e}")
+
+
+def get_plan_from_payload(plan_id: str) -> dict:
+    """Fetch plan details from Payload CMS by integer ID."""
     try:
         res = requests.get(
             f"{PAYLOAD_URL}/plans/{plan_id}",
-            headers=HEADERS,
-            timeout=5
+            headers=PAYLOAD_HEADERS,
+            timeout=5,
         )
+        if res.status_code != 200:
+            raise HTTPException(status_code=400, detail="Plan not found in Payload")
         return res.json()
+    except HTTPException:
+        raise
     except Exception as e:
-        logging.error(f"Failed to fetch plan: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch plan details")
+        logging.error(f"Payload plan fetch error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch plan from Payload")
 
 
-# -----------------------------
-# HOME
-# -----------------------------
+# ─────────────────────────────────────────
+# ROUTES
+# ─────────────────────────────────────────
+
 @app.get("/")
 def home():
     return {"status": "API running"}
 
 
-# -----------------------------
-# WEB CONVERSION
-# Saves: conversions table
-# Checks: active web subscription, not expired
-# -----------------------------
-@app.post("/convert")
-async def convert(file: UploadFile = File(...), authorization: str = Header(None)):
-
-    user = get_supabase_user(authorization)
-    user_id = user.id
-
-    # Check active web subscription
-    subscription = supabase.table("subscriptions") \
-        .select("*") \
-        .eq("user_id", user_id) \
-        .eq("status", "active") \
-        .eq("plan_category", "web") \
-        .order("created_at", desc=True) \
-        .limit(1) \
+# ── SYNC USER ─────────────────────────────────────────────────────────────────
+@app.post("/sync-user")
+async def sync_user(
+    email:             str = Form(...),
+    full_name:         str = Form(""),
+    supabase_user_id:  str = Form(""),
+):
+    """
+    Called from frontend after Supabase signup.
+    Creates the user in Payload and saves the ID mapping.
+    """
+    # Check if mapping already exists
+    existing_map = supabase.table(TBL_PAYLOAD_MAP)\
+        .select("payload_user_id")\
+        .eq("supabase_user_id", supabase_user_id)\
         .execute()
 
-    if not subscription.data:
-        raise HTTPException(status_code=403, detail="No active web subscription found")
+    if existing_map.data:
+        return {"message": "User already synced", "payload_id": existing_map.data[0]["payload_user_id"]}
 
-    sub = subscription.data[0]
+    # Create user in Payload
+    new_user = create_payload_user(email, full_name)
+    if not new_user:
+        raise HTTPException(status_code=500, detail="Failed to create user in Payload")
 
-    # Check expiry
-    if sub.get("expires_at"):
-        expiry = datetime.fromisoformat(sub["expires_at"].replace("Z", ""))
-        if datetime.utcnow() > expiry:
-            supabase.table("subscriptions") \
-                .update({"status": "expired"}) \
-                .eq("id", sub["id"]) \
-                .execute()
-            raise HTTPException(status_code=403, detail="Subscription expired")
+    payload_user_id = new_user["id"]
 
-    # Perform conversion
-    os.makedirs("temp", exist_ok=True)
-    unique_id = str(uuid.uuid4())
-    temp_png_path = Path(f"temp/{unique_id}.png")
-    output_svg_path = Path(f"temp/{unique_id}.svg")
-
-    with temp_png_path.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    png_to_svg(temp_png_path, svg_path=output_svg_path)
-
-    with output_svg_path.open("rb") as f:
-        svg_result = f.read()
-
-    # Save conversion record
-    supabase.table("conversions").insert({
-        "user_id": user_id,
-        "type": "web",
-        "subscription_id": sub["id"],
-        "created_at": datetime.utcnow().isoformat()
+    # Save mapping in Supabase
+    supabase.table(TBL_PAYLOAD_MAP).insert({
+        "supabase_user_id": supabase_user_id,
+        "payload_user_id":  payload_user_id,
+        "email":            email,
     }).execute()
 
-    return Response(content=svg_result, media_type="image/svg+xml")
+    log_to_payload(payload_user_id, "user_signup", f"New signup: {email}")
+
+    return {"message": "User synced to Payload", "payload_id": payload_user_id}
 
 
-# -----------------------------
-# API CONVERSION (via API key)
-# Saves: conversions table, deducts api_credits
-# -----------------------------
-@app.post("/api/convert")
-async def api_convert(file: UploadFile = File(...), x_api_key: str = Header(None)):
+# ── TRIAL STATUS ──────────────────────────────────────────────────────────────
+@app.get("/trial-status")
+async def trial_status(authorization: str = Header(None)):
+    user            = get_supabase_user(authorization)
+    payload_user_id = get_payload_user_id(user.id)
+    usage_count     = 0
 
-    if not x_api_key:
-        raise HTTPException(status_code=401, detail="Missing API key")
+    if payload_user_id:
+        payload_user = get_payload_user(payload_user_id)
+        usage_count  = payload_user.get("usageCount", 0) if payload_user else 0
 
-    # Validate API key
-    key = supabase.table("api_keys") \
-        .select("*") \
-        .eq("api_key", x_api_key) \
+    sub = (
+        supabase.table(TBL_SUBSCRIPTIONS)
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .limit(1)
         .execute()
-
-    if not key.data:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-
-    key_doc = key.data[0]
-
-    if not key_doc["active"]:
-        raise HTTPException(status_code=403, detail="API key inactive")
-
-    user_id = key_doc["user_id"]
-
-    # Check credits
-    credits = supabase.table("api_credits") \
-        .select("*") \
-        .eq("user_id", user_id) \
-        .execute()
-
-    if not credits.data:
-        raise HTTPException(status_code=403, detail="No API credits available")
-
-    credit_doc = credits.data[0]
-    credits_remaining = credit_doc["credits_remaining"]
-
-    if credits_remaining <= 0:
-        raise HTTPException(status_code=403, detail="API credits exhausted")
-
-    # Perform conversion
-    os.makedirs("temp", exist_ok=True)
-    unique_id = str(uuid.uuid4())
-    temp_png_path = Path(f"temp/{unique_id}.png")
-    output_svg_path = Path(f"temp/{unique_id}.svg")
-
-    with temp_png_path.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    png_to_svg(temp_png_path, svg_path=output_svg_path)
-
-    with output_svg_path.open("rb") as f:
-        svg_result = f.read()
-
-    # Deduct 1 credit
-    supabase.table("api_credits") \
-        .update({"credits_remaining": credits_remaining - 1}) \
-        .eq("user_id", user_id) \
-        .execute()
-
-    # Save conversion record
-    supabase.table("conversions").insert({
-        "user_id": user_id,
-        "type": "api",
-        "api_key_used": x_api_key,
-        "created_at": datetime.utcnow().isoformat()
-    }).execute()
-
-    return Response(content=svg_result, media_type="image/svg+xml")
-
-
-# -----------------------------
-# CREATE RAZORPAY ORDER
-# -----------------------------
-@app.post("/create-order")
-async def create_order(plan_id: str = Form(...), authorization: str = Header(None)):
-
-    user = get_supabase_user(authorization)
-
-    # Fetch plan from Payload to get price
-    plan = get_plan_from_payload(plan_id)
-    amount = plan.get("price")
-
-    if not amount:
-        raise HTTPException(status_code=400, detail="Invalid plan or price not set")
-
-    order = razorpay_client.order.create({
-        "amount": int(float(amount) * 100),  # paise
-        "currency": "INR",
-        "payment_capture": 1
-    })
+    )
+    has_active_plan = len(sub.data) > 0
 
     return {
-        "order_id": order["id"],
-        "amount": order["amount"],
-        "key": RAZORPAY_KEY_ID
+        "has_active_plan": has_active_plan,
+        "usage_count":     usage_count,
+        "free_limit":      FREE_TRIAL_LIMIT,
+        "free_remaining":  max(0, FREE_TRIAL_LIMIT - usage_count) if not has_active_plan else None,
+        "trial_exhausted": usage_count >= FREE_TRIAL_LIMIT and not has_active_plan,
     }
 
 
-# -----------------------------
-# VERIFY PAYMENT
-# Saves: payments, subscriptions, api_credits, credit_transactions
-# Updates: user subscription status
-# -----------------------------
+# ── WEB CONVERSION ────────────────────────────────────────────────────────────
+@app.post("/convert")
+async def convert(
+    file:          UploadFile = File(...),
+    authorization: str        = Header(None),
+):
+    user            = get_supabase_user(authorization)
+    user_id         = user.id
+    payload_user_id = get_payload_user_id(user_id)
+    usage_count     = 0
+
+    if payload_user_id:
+        payload_user = get_payload_user(payload_user_id)
+        usage_count  = payload_user.get("usageCount", 0) if payload_user else 0
+
+    # Check active web subscription
+    sub_result = (
+        supabase.table(TBL_SUBSCRIPTIONS)
+        .select("*")
+        .eq("user_id", user_id)
+        .eq("status", "active")
+        .eq("plan_category", "web")
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    active_sub = sub_result.data[0] if sub_result.data else None
+
+    # Check expiry
+    if active_sub and active_sub.get("expires_at"):
+        expiry = datetime.fromisoformat(active_sub["expires_at"].replace("Z", "+00:00"))
+        if datetime.now(expiry.tzinfo) > expiry:
+            supabase.table(TBL_SUBSCRIPTIONS).update({"status": "expired"}).eq("id", active_sub["id"]).execute()
+            if payload_user_id:
+                update_payload_user(payload_user_id, {"subscriptionStatus": "expired"})
+            active_sub = None
+
+    # Gate: no active sub → check trial limit
+    if not active_sub:
+        if usage_count >= FREE_TRIAL_LIMIT:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Free trial limit of {FREE_TRIAL_LIMIT} conversions reached. Please buy a plan to continue.",
+            )
+
+    # Perform conversion
+    os.makedirs("temp", exist_ok=True)
+    uid             = str(uuid.uuid4())
+    temp_png_path   = Path(f"temp/{uid}.png")
+    output_svg_path = Path(f"temp/{uid}.svg")
+
+    with temp_png_path.open("wb") as buf:
+        shutil.copyfileobj(file.file, buf)
+
+    png_to_svg(temp_png_path, svg_path=output_svg_path)
+
+    with output_svg_path.open("rb") as f:
+        svg_result = f.read()
+
+    # Save conversion record
+    supabase.table(TBL_CONVERSIONS).insert({
+        "user_id":         user_id,
+        "type":            "web",
+        "subscription_id": active_sub["id"] if active_sub else None,
+        "created_at":      datetime.utcnow().isoformat(),
+    }).execute()
+
+    # Increment usageCount in Payload
+    if payload_user_id:
+        new_count = usage_count + 1
+        update_payload_user(payload_user_id, {"usageCount": new_count})
+        log_to_payload(payload_user_id, "web_conversion", f"Conversion #{new_count}")
+
+    return Response(content=svg_result, media_type="image/svg+xml")
+
+
+# ── API CONVERSION ────────────────────────────────────────────────────────────
+@app.post("/api/convert")
+async def api_convert(
+    file:      UploadFile = File(...),
+    x_api_key: str        = Header(None),
+):
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="Missing X-Api-Key header")
+
+    key_result = supabase.table(TBL_API_KEYS).select("*").eq("api_key", x_api_key).execute()
+    if not key_result.data:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    key_doc = key_result.data[0]
+    if not key_doc["active"]:
+        raise HTTPException(status_code=403, detail="API key is inactive")
+
+    api_user_id = key_doc["user_id"]
+
+    credits_result = supabase.table(TBL_USER_API_CREDITS).select("*").eq("user_id", api_user_id).execute()
+    if not credits_result.data or credits_result.data[0]["credits_remaining"] <= 0:
+        raise HTTPException(status_code=403, detail="API credits exhausted. Please top up.")
+
+    credits_remaining = credits_result.data[0]["credits_remaining"]
+
+    os.makedirs("temp", exist_ok=True)
+    uid             = str(uuid.uuid4())
+    temp_png_path   = Path(f"temp/{uid}.png")
+    output_svg_path = Path(f"temp/{uid}.svg")
+
+    with temp_png_path.open("wb") as buf:
+        shutil.copyfileobj(file.file, buf)
+
+    png_to_svg(temp_png_path, svg_path=output_svg_path)
+
+    with output_svg_path.open("rb") as f:
+        svg_result = f.read()
+
+    supabase.table(TBL_USER_API_CREDITS).update(
+        {"credits_remaining": credits_remaining - 1}
+    ).eq("user_id", api_user_id).execute()
+
+    supabase.table(TBL_CONVERSIONS).insert({
+        "user_id":      api_user_id,
+        "type":         "api",
+        "api_key_used": x_api_key,
+        "created_at":   datetime.utcnow().isoformat(),
+    }).execute()
+
+    return Response(content=svg_result, media_type="image/svg+xml")
+
+
+# ── CREATE RAZORPAY ORDER ─────────────────────────────────────────────────────
+@app.post("/create-order")
+async def create_order(
+    plan_id:       str = Form(...),
+    authorization: str = Header(None),
+):
+    get_supabase_user(authorization)
+
+    plan   = get_plan_from_payload(plan_id)
+    amount = plan.get("price")
+    if not amount:
+        raise HTTPException(status_code=400, detail="Plan price not set in Payload")
+
+    order = razorpay_client.order.create({
+        "amount":          int(float(amount) * 100),
+        "currency":        "INR",
+        "payment_capture": 1,
+    })
+
+    return {"order_id": order["id"], "amount": order["amount"], "key": RAZORPAY_KEY_ID}
+
+
+# ── VERIFY PAYMENT ────────────────────────────────────────────────────────────
 @app.post("/verify-payment")
 async def verify_payment(
-    razorpay_order_id: str = Form(...),
+    razorpay_order_id:   str = Form(...),
     razorpay_payment_id: str = Form(...),
-    razorpay_signature: str = Form(...),
-    plan_id: str = Form(...),
-    authorization: str = Header(None)
+    razorpay_signature:  str = Form(...),
+    plan_id:             str = Form(...),
+    authorization:       str = Header(None),
 ):
-    user = get_supabase_user(authorization)
-    user_id = user.id
+    user            = get_supabase_user(authorization)
+    user_id         = user.id
+    payload_user_id = get_payload_user_id(user_id)
 
-    # Step 1: Verify Razorpay signature
+    # 1. Verify signature
     try:
         razorpay_client.utility.verify_payment_signature({
-            "razorpay_order_id": razorpay_order_id,
+            "razorpay_order_id":   razorpay_order_id,
             "razorpay_payment_id": razorpay_payment_id,
-            "razorpay_signature": razorpay_signature
+            "razorpay_signature":  razorpay_signature,
         })
     except razorpay.errors.SignatureVerificationError:
-        raise HTTPException(status_code=400, detail="Payment verification failed")
+        raise HTTPException(status_code=400, detail="Payment signature verification failed")
 
-    # Step 2: Fetch plan from Payload
-    plan = get_plan_from_payload(plan_id)
+    # 2. Fetch plan
+    plan          = get_plan_from_payload(plan_id)
     plan_name     = plan.get("planName")
     price         = plan.get("price")
-    plan_category = plan.get("planCategory")  # 'web' or 'api'
+    plan_category = plan.get("planCategory")
     usage_limit   = plan.get("usageLimit")
     duration_days = plan.get("durationDays")
 
     if not plan_category:
-        raise HTTPException(status_code=400, detail="Plan category not set in Payload")
+        raise HTTPException(status_code=400, detail="Plan category missing in Payload")
 
-    # Calculate expiry date
     expires_at = None
     if duration_days:
         expires_at = (datetime.utcnow() + timedelta(days=int(duration_days))).isoformat()
 
-    # Step 3: Save payment record
-    supabase.table("payments").insert({
-        "user_id":              user_id,
-        "plan_id":              plan_id,
-        "plan_name":            plan_name,
-        "amount":               price,
-        "razorpay_order_id":    razorpay_order_id,
-        "razorpay_payment_id":  razorpay_payment_id,
-        "razorpay_signature":   razorpay_signature,
-        "status":               "success",
-        "plan_category":        plan_category,
-        "created_at":           datetime.utcnow().isoformat()
+    # 3. Save payment to Supabase
+    supabase.table(TBL_PAYMENTS).insert({
+        "user_id":             user_id,
+        "plan_id":             plan_id,
+        "plan_name":           plan_name,
+        "plan_category":       plan_category,
+        "amount":              price,
+        "razorpay_order_id":   razorpay_order_id,
+        "razorpay_payment_id": razorpay_payment_id,
+        "razorpay_signature":  razorpay_signature,
+        "status":              "success",
+        "created_at":          datetime.utcnow().isoformat(),
     }).execute()
 
-    # Step 4: Save subscription record
-    supabase.table("subscriptions").insert({
+    # 4. Save subscription
+    supabase.table(TBL_SUBSCRIPTIONS).insert({
         "user_id":           user_id,
         "plan_id":           plan_id,
         "plan_name":         plan_name,
@@ -317,149 +471,619 @@ async def verify_payment(
         "expires_at":        expires_at,
         "credits_total":     int(usage_limit) if plan_category == "api" and usage_limit else None,
         "credits_remaining": int(usage_limit) if plan_category == "api" and usage_limit else None,
-        "payment_id":        razorpay_payment_id
+        "payment_id":        razorpay_payment_id,
     }).execute()
 
-    # Step 5: If API plan → add/top up credits
+    # 5. API plan → top up credits
     if plan_category == "api" and usage_limit:
-        existing = supabase.table("api_credits") \
-            .select("*") \
-            .eq("user_id", user_id) \
-            .execute()
-
+        existing = supabase.table(TBL_USER_API_CREDITS).select("*").eq("user_id", user_id).execute()
         if existing.data:
             current = existing.data[0]["credits_remaining"]
-            supabase.table("api_credits") \
-                .update({"credits_remaining": current + int(usage_limit)}) \
-                .eq("user_id", user_id) \
-                .execute()
+            supabase.table(TBL_USER_API_CREDITS).update(
+                {"credits_remaining": current + int(usage_limit)}
+            ).eq("user_id", user_id).execute()
         else:
-            supabase.table("api_credits").insert({
+            supabase.table(TBL_USER_API_CREDITS).insert({
                 "user_id":           user_id,
-                "credits_remaining": int(usage_limit)
+                "credits_remaining": int(usage_limit),
             }).execute()
 
-        # Save credit transaction record
-        supabase.table("credit_transactions").insert({
+        supabase.table(TBL_USER_CREDIT_TX).insert({
             "user_id":       user_id,
             "credits_added": int(usage_limit),
             "price":         price,
             "payment_id":    razorpay_payment_id,
-            "date":          datetime.utcnow().isoformat()
+            "date":          datetime.utcnow().isoformat(),
         }).execute()
+
+    # 6. Update Payload user
+    if payload_user_id:
+        payload_update: dict = {
+            "subscriptionStatus": "active",
+            "subscriptionPlan":   int(plan_id),
+        }
+        if expires_at:
+            payload_update["subscriptionExpiry"] = expires_at
+        if duration_days:
+            payload_update["billingCycle"] = "monthly"
+
+        update_payload_user(payload_user_id, payload_update)
+
+        # Save payment in Payload Payments collection
+        try:
+            requests.post(
+                f"{PAYLOAD_URL}/payments",
+                headers=PAYLOAD_HEADERS,
+                json={
+                    "user":          payload_user_id,
+                    "amount":        float(price) if price else 0,
+                    "status":        "success",
+                    "transactionId": razorpay_payment_id,
+                },
+                timeout=5,
+            )
+        except Exception as e:
+            logging.error(f"Payload payment record error: {e}")
+
+        log_to_payload(
+            payload_user_id,
+            "payment_success",
+            f"Plan: {plan_name} | Amount: {price} | TxID: {razorpay_payment_id}",
+        )
 
     return {"message": "Payment verified and subscription activated"}
 
 
-# -----------------------------
-# GENERATE API KEY
-# Saves: api_keys table
-# -----------------------------
+# ── GENERATE API KEY ──────────────────────────────────────────────────────────
 @app.post("/generate-api-key")
-async def generate_api_key(description: str = Form(...), authorization: str = Header(None)):
-
-    user = get_supabase_user(authorization)
+async def generate_api_key(
+    description:   str = Form(...),
+    authorization: str = Header(None),
+):
+    user    = get_supabase_user(authorization)
     user_id = user.id
-    email = user.email
+    email   = user.email
 
     api_key = "sk_" + uuid.uuid4().hex[:16]
 
-    supabase.table("api_keys").insert({
+    supabase.table(TBL_API_KEYS).insert({
         "api_key":     api_key,
         "user_id":     user_id,
         "user_email":  email,
         "description": description,
         "active":      True,
-        "created_at":  datetime.utcnow().isoformat()
+        "created_at":  datetime.utcnow().isoformat(),
     }).execute()
+
+    payload_user_id = get_payload_user_id(user_id)
+    log_to_payload(payload_user_id, "api_key_generated", f"Key: {api_key[:10]}... | Desc: {description}")
 
     return {"api_key": api_key}
 
 
-# -----------------------------
-# FETCH MY API KEYS
-# -----------------------------
+# ── MY API KEYS ───────────────────────────────────────────────────────────────
 @app.get("/my-api-keys")
 async def my_api_keys(authorization: str = Header(None)):
-
     user = get_supabase_user(authorization)
-    keys = supabase.table("api_keys") \
-        .select("*") \
-        .eq("user_id", user.id) \
-        .execute()
-
+    keys = supabase.table(TBL_API_KEYS).select("*").eq("user_id", user.id).execute()
     return keys.data
 
 
-# -----------------------------
-# FETCH MY API CREDITS
-# -----------------------------
+# ── MY API CREDITS ────────────────────────────────────────────────────────────
 @app.get("/my-api-credits")
 async def my_api_credits(authorization: str = Header(None)):
-
-    user = get_supabase_user(authorization)
-    credits = supabase.table("api_credits") \
-        .select("*") \
-        .eq("user_id", user.id) \
-        .execute()
-
-    if credits.data:
-        return credits.data[0]
-
-    return {"credits_remaining": 0}
+    user    = get_supabase_user(authorization)
+    credits = supabase.table(TBL_USER_API_CREDITS).select("*").eq("user_id", user.id).execute()
+    return credits.data[0] if credits.data else {"credits_remaining": 0}
 
 
-# -----------------------------
-# FETCH MY ACTIVE SUBSCRIPTION
-# -----------------------------
+# ── MY ACTIVE SUBSCRIPTION ────────────────────────────────────────────────────
 @app.get("/my-subscription")
 async def my_subscription(authorization: str = Header(None)):
-
     user = get_supabase_user(authorization)
-    subscription = supabase.table("subscriptions") \
-        .select("*") \
-        .eq("user_id", user.id) \
-        .eq("status", "active") \
-        .order("created_at", desc=True) \
-        .limit(1) \
+    sub  = (
+        supabase.table(TBL_SUBSCRIPTIONS)
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .order("created_at", desc=True)
+        .limit(1)
         .execute()
-
-    if subscription.data:
-        return subscription.data[0]
-
-    return {"status": "no active subscription"}
+    )
+    return sub.data[0] if sub.data else {"status": "no_active_subscription"}
 
 
-# -----------------------------
-# FETCH MY CONVERSIONS
-# -----------------------------
+# ── MY CONVERSIONS ────────────────────────────────────────────────────────────
 @app.get("/my-conversions")
 async def my_conversions(authorization: str = Header(None)):
-
     user = get_supabase_user(authorization)
-    conversions = supabase.table("conversions") \
-        .select("*") \
-        .eq("user_id", user.id) \
-        .order("created_at", desc=True) \
+    data = (
+        supabase.table(TBL_CONVERSIONS)
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", desc=True)
         .execute()
+    )
+    return data.data
 
-    return conversions.data
 
-
-# -----------------------------
-# FETCH MY PAYMENT HISTORY
-# -----------------------------
+# ── MY PAYMENTS ───────────────────────────────────────────────────────────────
 @app.get("/my-payments")
 async def my_payments(authorization: str = Header(None)):
-
     user = get_supabase_user(authorization)
-    payments = supabase.table("payments") \
-        .select("*") \
-        .eq("user_id", user.id) \
-        .order("created_at", desc=True) \
+    data = (
+        supabase.table(TBL_PAYMENTS)
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", desc=True)
         .execute()
+    )
+    return data.data
 
-    return payments.data
+
+
+# from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException
+# from fastapi.responses import Response
+# from fastapi.middleware.cors import CORSMiddleware
+# from pathlib import Path
+# import shutil
+# import os
+# import uuid
+# import logging
+# from datetime import datetime, timedelta
+# import razorpay
+# from supabase import create_client, Client
+# from .png_to_svg import png_to_svg
+# import requests
+
+# # -----------------------------
+# # Payload Config
+# # -----------------------------
+# PAYLOAD_URL = "http://localhost:3000/api"
+# PAYLOAD_SECRET = "e7be7f67ce829de0fbe6a19c"
+# HEADERS = {
+#     "Authorization": f"Bearer {PAYLOAD_SECRET}",
+#     "Content-Type": "application/json"
+# }
+
+# # -----------------------------
+# # Supabase Config
+# # -----------------------------
+# SUPABASE_URL = "https://pswlpjqonxynzxsdyjud.supabase.co"
+# SUPABASE_SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBzd2xwanFvbnh5bnp4c2R5anVkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjAwNzQxMCwiZXhwIjoyMDg3NTgzNDEwfQ.nWsrDi03y4c_Tde4TPoZJ5nUq55zorQPEmivr3UqR5U"
+
+# supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
+# # -----------------------------
+# # Razorpay Config
+# # -----------------------------
+# RAZORPAY_KEY_ID = "rzp_test_RmG7hznjlclBga"
+# RAZORPAY_KEY_SECRET = "YvACC6VRdicCORe4qH10Q05l"
+
+# razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+
+# # -----------------------------
+# # FastAPI App
+# # -----------------------------
+# app = FastAPI()
+
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["http://localhost:5173"],
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"]
+# )
+
+
+# # -----------------------------
+# # Helper: Get Supabase user from token
+# # -----------------------------
+# def get_supabase_user(authorization: str):
+#     if not authorization:
+#         raise HTTPException(status_code=401, detail="Missing token")
+#     token = authorization.split(" ")[1]
+#     user = supabase.auth.get_user(token)
+#     if not user.user:
+#         raise HTTPException(status_code=401, detail="Invalid user")
+#     return user.user
+
+
+# # -----------------------------
+# # Helper: Fetch plan from Payload
+# # -----------------------------
+# def get_plan_from_payload(plan_id: str):
+#     try:
+#         res = requests.get(
+#             f"{PAYLOAD_URL}/plans/{plan_id}",
+#             headers=HEADERS,
+#             timeout=5
+#         )
+#         return res.json()
+#     except Exception as e:
+#         logging.error(f"Failed to fetch plan: {e}")
+#         raise HTTPException(status_code=500, detail="Failed to fetch plan details")
+
+
+# # -----------------------------
+# # HOME
+# # -----------------------------
+# @app.get("/")
+# def home():
+#     return {"status": "API running"}
+
+
+# # -----------------------------
+# # WEB CONVERSION
+# # Saves: conversions table
+# # Checks: active web subscription, not expired
+# # -----------------------------
+# @app.post("/convert")
+# async def convert(file: UploadFile = File(...), authorization: str = Header(None)):
+
+#     user = get_supabase_user(authorization)
+#     user_id = user.id
+
+#     # Check active web subscription
+#     subscription = supabase.table("subscriptions") \
+#         .select("*") \
+#         .eq("user_id", user_id) \
+#         .eq("status", "active") \
+#         .eq("plan_category", "web") \
+#         .order("created_at", desc=True) \
+#         .limit(1) \
+#         .execute()
+
+#     if not subscription.data:
+#         raise HTTPException(status_code=403, detail="No active web subscription found")
+
+#     sub = subscription.data[0]
+
+#     # Check expiry
+#     if sub.get("expires_at"):
+#         expiry = datetime.fromisoformat(sub["expires_at"].replace("Z", ""))
+#         if datetime.utcnow() > expiry:
+#             supabase.table("subscriptions") \
+#                 .update({"status": "expired"}) \
+#                 .eq("id", sub["id"]) \
+#                 .execute()
+#             raise HTTPException(status_code=403, detail="Subscription expired")
+
+#     # Perform conversion
+#     os.makedirs("temp", exist_ok=True)
+#     unique_id = str(uuid.uuid4())
+#     temp_png_path = Path(f"temp/{unique_id}.png")
+#     output_svg_path = Path(f"temp/{unique_id}.svg")
+
+#     with temp_png_path.open("wb") as buffer:
+#         shutil.copyfileobj(file.file, buffer)
+
+#     png_to_svg(temp_png_path, svg_path=output_svg_path)
+
+#     with output_svg_path.open("rb") as f:
+#         svg_result = f.read()
+
+#     # Save conversion record
+#     supabase.table("conversions").insert({
+#         "user_id": user_id,
+#         "type": "web",
+#         "subscription_id": sub["id"],
+#         "created_at": datetime.utcnow().isoformat()
+#     }).execute()
+
+#     return Response(content=svg_result, media_type="image/svg+xml")
+
+
+# # -----------------------------
+# # API CONVERSION (via API key)
+# # Saves: conversions table, deducts api_credits
+# # -----------------------------
+# @app.post("/api/convert")
+# async def api_convert(file: UploadFile = File(...), x_api_key: str = Header(None)):
+
+#     if not x_api_key:
+#         raise HTTPException(status_code=401, detail="Missing API key")
+
+#     # Validate API key
+#     key = supabase.table("api_keys") \
+#         .select("*") \
+#         .eq("api_key", x_api_key) \
+#         .execute()
+
+#     if not key.data:
+#         raise HTTPException(status_code=401, detail="Invalid API key")
+
+#     key_doc = key.data[0]
+
+#     if not key_doc["active"]:
+#         raise HTTPException(status_code=403, detail="API key inactive")
+
+#     user_id = key_doc["user_id"]
+
+#     # Check credits
+#     credits = supabase.table("api_credits") \
+#         .select("*") \
+#         .eq("user_id", user_id) \
+#         .execute()
+
+#     if not credits.data:
+#         raise HTTPException(status_code=403, detail="No API credits available")
+
+#     credit_doc = credits.data[0]
+#     credits_remaining = credit_doc["credits_remaining"]
+
+#     if credits_remaining <= 0:
+#         raise HTTPException(status_code=403, detail="API credits exhausted")
+
+#     # Perform conversion
+#     os.makedirs("temp", exist_ok=True)
+#     unique_id = str(uuid.uuid4())
+#     temp_png_path = Path(f"temp/{unique_id}.png")
+#     output_svg_path = Path(f"temp/{unique_id}.svg")
+
+#     with temp_png_path.open("wb") as buffer:
+#         shutil.copyfileobj(file.file, buffer)
+
+#     png_to_svg(temp_png_path, svg_path=output_svg_path)
+
+#     with output_svg_path.open("rb") as f:
+#         svg_result = f.read()
+
+#     # Deduct 1 credit
+#     supabase.table("api_credits") \
+#         .update({"credits_remaining": credits_remaining - 1}) \
+#         .eq("user_id", user_id) \
+#         .execute()
+
+#     # Save conversion record
+#     supabase.table("conversions").insert({
+#         "user_id": user_id,
+#         "type": "api",
+#         "api_key_used": x_api_key,
+#         "created_at": datetime.utcnow().isoformat()
+#     }).execute()
+
+#     return Response(content=svg_result, media_type="image/svg+xml")
+
+
+# # -----------------------------
+# # CREATE RAZORPAY ORDER
+# # -----------------------------
+# @app.post("/create-order")
+# async def create_order(plan_id: str = Form(...), authorization: str = Header(None)):
+
+#     user = get_supabase_user(authorization)
+
+#     # Fetch plan from Payload to get price
+#     plan = get_plan_from_payload(plan_id)
+#     amount = plan.get("price")
+
+#     if not amount:
+#         raise HTTPException(status_code=400, detail="Invalid plan or price not set")
+
+#     order = razorpay_client.order.create({
+#         "amount": int(float(amount) * 100),  # paise
+#         "currency": "INR",
+#         "payment_capture": 1
+#     })
+
+#     return {
+#         "order_id": order["id"],
+#         "amount": order["amount"],
+#         "key": RAZORPAY_KEY_ID
+#     }
+
+
+# # -----------------------------
+# # VERIFY PAYMENT
+# # Saves: payments, subscriptions, api_credits, credit_transactions
+# # Updates: user subscription status
+# # -----------------------------
+# @app.post("/verify-payment")
+# async def verify_payment(
+#     razorpay_order_id: str = Form(...),
+#     razorpay_payment_id: str = Form(...),
+#     razorpay_signature: str = Form(...),
+#     plan_id: str = Form(...),
+#     authorization: str = Header(None)
+# ):
+#     user = get_supabase_user(authorization)
+#     user_id = user.id
+
+#     # Step 1: Verify Razorpay signature
+#     try:
+#         razorpay_client.utility.verify_payment_signature({
+#             "razorpay_order_id": razorpay_order_id,
+#             "razorpay_payment_id": razorpay_payment_id,
+#             "razorpay_signature": razorpay_signature
+#         })
+#     except razorpay.errors.SignatureVerificationError:
+#         raise HTTPException(status_code=400, detail="Payment verification failed")
+
+#     # Step 2: Fetch plan from Payload
+#     plan = get_plan_from_payload(plan_id)
+#     plan_name     = plan.get("planName")
+#     price         = plan.get("price")
+#     plan_category = plan.get("planCategory")  # 'web' or 'api'
+#     usage_limit   = plan.get("usageLimit")
+#     duration_days = plan.get("durationDays")
+
+#     if not plan_category:
+#         raise HTTPException(status_code=400, detail="Plan category not set in Payload")
+
+#     # Calculate expiry date
+#     expires_at = None
+#     if duration_days:
+#         expires_at = (datetime.utcnow() + timedelta(days=int(duration_days))).isoformat()
+
+#     # Step 3: Save payment record
+#     supabase.table("payments").insert({
+#         "user_id":              user_id,
+#         "plan_id":              plan_id,
+#         "plan_name":            plan_name,
+#         "amount":               price,
+#         "razorpay_order_id":    razorpay_order_id,
+#         "razorpay_payment_id":  razorpay_payment_id,
+#         "razorpay_signature":   razorpay_signature,
+#         "status":               "success",
+#         "plan_category":        plan_category,
+#         "created_at":           datetime.utcnow().isoformat()
+#     }).execute()
+
+#     # Step 4: Save subscription record
+#     supabase.table("subscriptions").insert({
+#         "user_id":           user_id,
+#         "plan_id":           plan_id,
+#         "plan_name":         plan_name,
+#         "plan_category":     plan_category,
+#         "status":            "active",
+#         "started_at":        datetime.utcnow().isoformat(),
+#         "expires_at":        expires_at,
+#         "credits_total":     int(usage_limit) if plan_category == "api" and usage_limit else None,
+#         "credits_remaining": int(usage_limit) if plan_category == "api" and usage_limit else None,
+#         "payment_id":        razorpay_payment_id
+#     }).execute()
+
+#     # Step 5: If API plan → add/top up credits
+#     if plan_category == "api" and usage_limit:
+#         existing = supabase.table("api_credits") \
+#             .select("*") \
+#             .eq("user_id", user_id) \
+#             .execute()
+
+#         if existing.data:
+#             current = existing.data[0]["credits_remaining"]
+#             supabase.table("api_credits") \
+#                 .update({"credits_remaining": current + int(usage_limit)}) \
+#                 .eq("user_id", user_id) \
+#                 .execute()
+#         else:
+#             supabase.table("api_credits").insert({
+#                 "user_id":           user_id,
+#                 "credits_remaining": int(usage_limit)
+#             }).execute()
+
+#         # Save credit transaction record
+#         supabase.table("credit_transactions").insert({
+#             "user_id":       user_id,
+#             "credits_added": int(usage_limit),
+#             "price":         price,
+#             "payment_id":    razorpay_payment_id,
+#             "date":          datetime.utcnow().isoformat()
+#         }).execute()
+
+#     return {"message": "Payment verified and subscription activated"}
+
+
+# # -----------------------------
+# # GENERATE API KEY
+# # Saves: api_keys table
+# # -----------------------------
+# @app.post("/generate-api-key")
+# async def generate_api_key(description: str = Form(...), authorization: str = Header(None)):
+
+#     user = get_supabase_user(authorization)
+#     user_id = user.id
+#     email = user.email
+
+#     api_key = "sk_" + uuid.uuid4().hex[:16]
+
+#     supabase.table("api_keys").insert({
+#         "api_key":     api_key,
+#         "user_id":     user_id,
+#         "user_email":  email,
+#         "description": description,
+#         "active":      True,
+#         "created_at":  datetime.utcnow().isoformat()
+#     }).execute()
+
+#     return {"api_key": api_key}
+
+
+# # -----------------------------
+# # FETCH MY API KEYS
+# # -----------------------------
+# @app.get("/my-api-keys")
+# async def my_api_keys(authorization: str = Header(None)):
+
+#     user = get_supabase_user(authorization)
+#     keys = supabase.table("api_keys") \
+#         .select("*") \
+#         .eq("user_id", user.id) \
+#         .execute()
+
+#     return keys.data
+
+
+# # -----------------------------
+# # FETCH MY API CREDITS
+# # -----------------------------
+# @app.get("/my-api-credits")
+# async def my_api_credits(authorization: str = Header(None)):
+
+#     user = get_supabase_user(authorization)
+#     credits = supabase.table("api_credits") \
+#         .select("*") \
+#         .eq("user_id", user.id) \
+#         .execute()
+
+#     if credits.data:
+#         return credits.data[0]
+
+#     return {"credits_remaining": 0}
+
+
+# # -----------------------------
+# # FETCH MY ACTIVE SUBSCRIPTION
+# # -----------------------------
+# @app.get("/my-subscription")
+# async def my_subscription(authorization: str = Header(None)):
+
+#     user = get_supabase_user(authorization)
+#     subscription = supabase.table("subscriptions") \
+#         .select("*") \
+#         .eq("user_id", user.id) \
+#         .eq("status", "active") \
+#         .order("created_at", desc=True) \
+#         .limit(1) \
+#         .execute()
+
+#     if subscription.data:
+#         return subscription.data[0]
+
+#     return {"status": "no active subscription"}
+
+
+# # -----------------------------
+# # FETCH MY CONVERSIONS
+# # -----------------------------
+# @app.get("/my-conversions")
+# async def my_conversions(authorization: str = Header(None)):
+
+#     user = get_supabase_user(authorization)
+#     conversions = supabase.table("conversions") \
+#         .select("*") \
+#         .eq("user_id", user.id) \
+#         .order("created_at", desc=True) \
+#         .execute()
+
+#     return conversions.data
+
+
+# # -----------------------------
+# # FETCH MY PAYMENT HISTORY
+# # -----------------------------
+# @app.get("/my-payments")
+# async def my_payments(authorization: str = Header(None)):
+
+#     user = get_supabase_user(authorization)
+#     payments = supabase.table("payments") \
+#         .select("*") \
+#         .eq("user_id", user.id) \
+#         .order("created_at", desc=True) \
+#         .execute()
+
+#     return payments.data
 
 
 
