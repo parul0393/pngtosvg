@@ -344,7 +344,7 @@ async def verify_payment(
             "user_id":       user_id,
             "credits_added": int(usage_limit),
             "price":         price,
-            "payment_id":    razorpay_payment_id,
+            # "payment_id":    razorpay_payment_id,
             "date":          datetime.utcnow().isoformat()
         }).execute()
 
