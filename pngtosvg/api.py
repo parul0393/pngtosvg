@@ -711,6 +711,30 @@ async def my_api_keys(authorization: str = Header(None)):
 #     user    = get_supabase_user(authorization)
 #     credits = supabase.table(TBL_USER_API_CREDITS).select("*").eq("user_id", user.id).execute()
 #     return credits.data[0] if credits.data else {"credits_remaining": 0}
+# @app.get("/my-api-credits")
+# async def my_api_credits(authorization: str = Header(None)):
+#     user = get_supabase_user(authorization)
+
+#     credits = supabase.table(TBL_USER_API_CREDITS)\
+#         .select("*")\
+#         .eq("user_id", user.id)\
+#         .execute()
+
+#     sub = supabase.table(TBL_SUBSCRIPTIONS)\
+#         .select("credits_total")\
+#         .eq("user_id", user.id)\
+#         .eq("status", "active")\
+#         .order("created_at", desc=True)\
+#         .limit(1)\
+#         .execute()
+
+#     total = sub.data[0]["credits_total"] if sub.data and sub.data[0]["credits_total"] else 0
+#     remaining = credits.data[0]["credits_remaining"] if credits.data else 0
+
+#     return {
+#         "remaining_credits": remaining,
+#         "total_credits": total
+#     }
 @app.get("/my-api-credits")
 async def my_api_credits(authorization: str = Header(None)):
     user = get_supabase_user(authorization)
@@ -724,11 +748,9 @@ async def my_api_credits(authorization: str = Header(None)):
         .select("credits_total")\
         .eq("user_id", user.id)\
         .eq("status", "active")\
-        .order("created_at", desc=True)\
-        .limit(1)\
         .execute()
 
-    total = sub.data[0]["credits_total"] if sub.data and sub.data[0]["credits_total"] else 0
+    total = sum(row["credits_total"] for row in sub.data if row.get("credits_total")) if sub.data else 0
     remaining = credits.data[0]["credits_remaining"] if credits.data else 0
 
     return {
