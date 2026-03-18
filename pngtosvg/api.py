@@ -625,7 +625,8 @@ async def verify_payment(
         # Update Payload user subscription status
         payload_update: dict = {
             "subscriptionStatus": "active",
-            "subscriptionPlan":   int(plan_id),
+            # "subscriptionPlan":   int(plan_id),
+            "subscriptionPlan": plan_id,
         }
         if expires_at:
             payload_update["subscriptionExpiry"] = expires_at
