@@ -43,7 +43,7 @@ def get_payload_headers() -> dict:
             f"{PAYLOAD_URL}/users/login",
             headers={"Content-Type": "application/json"},
             json={"email": PAYLOAD_ADMIN_EMAIL, "password": PAYLOAD_ADMIN_PASS},
-            timeout=5,
+            timeout=15,
         )
         if res.status_code == 200:
             token = res.json().get("token")
@@ -136,7 +136,7 @@ def get_payload_user(payload_user_id: int) -> dict | None:
         res = requests.get(
             f"{PAYLOAD_URL}/users/{payload_user_id}",
             headers=get_payload_headers(),
-            timeout=5,
+            timeout=15,
         )
         if res.status_code == 200:
             return res.json()
@@ -159,7 +159,7 @@ def create_payload_user(email: str, full_name: str) -> dict | None:
                 "subscriptionStatus": "trial",
                 "usageCount":         0,
             },
-            timeout=5,
+            timeout=15,
         )
         return res.json().get("doc")
     except Exception as e:
@@ -174,7 +174,7 @@ def update_payload_user(payload_user_id: int, data: dict):
             f"{PAYLOAD_URL}/users/{payload_user_id}",
             headers=get_payload_headers(),
             json=data,
-            timeout=5,
+            timeout=15,
         )
         if res.status_code not in (200, 201):
             logging.error(f"Payload update failed: {res.status_code} {res.text}")
@@ -196,7 +196,7 @@ def log_to_payload(payload_user_id: int | None, event: str, details: str = ""):
             f"{PAYLOAD_URL}/logs",
             headers=get_payload_headers(),
             json=body,
-            timeout=5,
+            timeout=15,
         )
     except Exception as e:
         logging.error(f"Payload log error: {e}")
@@ -208,7 +208,7 @@ def get_plan_from_payload(plan_id: str) -> dict:
         res = requests.get(
             f"{PAYLOAD_URL}/plans/{plan_id}",
             headers=get_payload_headers(),
-            timeout=5,
+            timeout=15,
         )
         if res.status_code != 200:
             raise HTTPException(status_code=400, detail="Plan not found in Payload")
@@ -234,7 +234,7 @@ def mirror_api_key_to_payload(payload_user_id: int, api_key: str, description: s
                 "active":      True,
                 "created_at":  datetime.utcnow().isoformat(),
             },
-            timeout=5,
+            timeout=15,
         )
         if res.status_code not in (200, 201):
             logging.error(f"Payload api-key mirror failed: {res.status_code} {res.text}")
@@ -250,7 +250,7 @@ def mirror_api_credits_to_payload(payload_user_id: int, user_id: str, credits: i
             f"{PAYLOAD_URL}/api-credits",
             headers=get_payload_headers(),
             params={"where[user_id][equals]": str(payload_user_id)},
-            timeout=5,
+            timeout=15,
         )
         data = res.json()
         docs = data.get("docs", [])
@@ -262,7 +262,7 @@ def mirror_api_credits_to_payload(payload_user_id: int, user_id: str, credits: i
                 f"{PAYLOAD_URL}/api-credits/{doc_id}",
                 headers=get_payload_headers(),
                 json={"credits_remaining": credits},
-                timeout=5,
+                timeout=15,
             )
         else:
             # Create new
@@ -273,7 +273,7 @@ def mirror_api_credits_to_payload(payload_user_id: int, user_id: str, credits: i
                     "user_id":           str(payload_user_id),
                     "credits_remaining": credits,
                 },
-                timeout=5,
+                timeout=15,
             )
     except Exception as e:
         logging.error(f"Payload api-credits mirror error: {e}")
@@ -291,7 +291,7 @@ def mirror_credit_transaction_to_payload(payload_user_id: int, credits_added: in
                 "price":        float(price) if price else 0,
                 "date":         datetime.utcnow().isoformat(),
             },
-            timeout=5,
+            timeout=15,
         )
     except Exception as e:
         logging.error(f"Payload credit-transaction mirror error: {e}")
@@ -645,7 +645,7 @@ async def verify_payment(
                     "status":        "success",
                     "transactionId": razorpay_payment_id,
                 },
-                timeout=5,
+                timeout=15,
             )
         except Exception as e:
             logging.error(f"Payload payment mirror error: {e}")
@@ -864,7 +864,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #             f"{PAYLOAD_URL}/users/login",
 #             headers={"Content-Type": "application/json"},
 #             json={"email": PAYLOAD_ADMIN_EMAIL, "password": PAYLOAD_ADMIN_PASS},
-#             timeout=5,
+#             timeout=15,
 #         )
 #         if res.status_code == 200:
 #             token = res.json().get("token")
@@ -957,7 +957,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #         res = requests.get(
 #             f"{PAYLOAD_URL}/users/{payload_user_id}",
 #             headers=get_payload_headers(),
-#             timeout=5,
+#             timeout=15,
 #         )
 #         if res.status_code == 200:
 #             return res.json()
@@ -980,7 +980,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                 "subscriptionStatus": "trial",
 #                 "usageCount":         0,
 #             },
-#             timeout=5,
+#             timeout=15,
 #         )
 #         return res.json().get("doc")
 #     except Exception as e:
@@ -995,7 +995,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #             f"{PAYLOAD_URL}/users/{payload_user_id}",
 #             headers=get_payload_headers(),
 #             json=data,
-#             timeout=5,
+#             timeout=15,
 #         )
 #         if res.status_code not in (200, 201):
 #             logging.error(f"Payload update failed: {res.status_code} {res.text}")
@@ -1017,7 +1017,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #             f"{PAYLOAD_URL}/logs",
 #             headers=get_payload_headers(),
 #             json=body,
-#             timeout=5,
+#             timeout=15,
 #         )
 #     except Exception as e:
 #         logging.error(f"Payload log error: {e}")
@@ -1029,7 +1029,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #         res = requests.get(
 #             f"{PAYLOAD_URL}/plans/{plan_id}",
 #             headers=get_payload_headers(),
-#             timeout=5,
+#             timeout=15,
 #         )
 #         if res.status_code != 200:
 #             raise HTTPException(status_code=400, detail="Plan not found in Payload")
@@ -1052,7 +1052,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                 "api_key":     api_key,
 #                 "description": description,
 #             },
-#             timeout=5,
+#             timeout=15,
 #         )
 #         if res.status_code not in (200, 201):
 #             logging.error(f"Payload api-key mirror failed: {res.status_code} {res.text}")
@@ -1068,7 +1068,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #             f"{PAYLOAD_URL}/api-credits",
 #             headers=get_payload_headers(),
 #             params={"where[user_id][equals]": str(payload_user_id)},
-#             timeout=5,
+#             timeout=15,
 #         )
 #         data = res.json()
 #         docs = data.get("docs", [])
@@ -1080,7 +1080,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                 f"{PAYLOAD_URL}/api-credits/{doc_id}",
 #                 headers=get_payload_headers(),
 #                 json={"credits_remaining": credits},
-#                 timeout=5,
+#                 timeout=15,
 #             )
 #         else:
 #             # Create new
@@ -1091,7 +1091,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                     "user_id":           str(payload_user_id),
 #                     "credits_remaining": credits,
 #                 },
-#                 timeout=5,
+#                 timeout=15,
 #             )
 #     except Exception as e:
 #         logging.error(f"Payload api-credits mirror error: {e}")
@@ -1109,7 +1109,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                 "price":        float(price) if price else 0,
 #                 "date":         datetime.utcnow().isoformat(),
 #             },
-#             timeout=5,
+#             timeout=15,
 #         )
 #     except Exception as e:
 #         logging.error(f"Payload credit-transaction mirror error: {e}")
@@ -1462,7 +1462,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                     "status":        "success",
 #                     "transactionId": razorpay_payment_id,
 #                 },
-#                 timeout=5,
+#                 timeout=15,
 #             )
 #         except Exception as e:
 #             logging.error(f"Payload payment mirror error: {e}")
@@ -1671,7 +1671,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #         res = requests.get(
 #             f"{PAYLOAD_URL}/users/{payload_user_id}",
 #             headers=PAYLOAD_HEADERS,
-#             timeout=5,
+#             timeout=15,
 #         )
 #         if res.status_code == 200:
 #             return res.json()
@@ -1694,7 +1694,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                 "subscriptionStatus": "trial",
 #                 "usageCount":         0,
 #             },
-#             timeout=5,
+#             timeout=15,
 #         )
 #         return res.json().get("doc")
 #     except Exception as e:
@@ -1709,7 +1709,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #             f"{PAYLOAD_URL}/users/{payload_user_id}",
 #             headers=PAYLOAD_HEADERS,
 #             json=data,
-#             timeout=5,
+#             timeout=15,
 #         )
 #         if res.status_code not in (200, 201):
 #             logging.error(f"Payload update failed: {res.status_code} {res.text}")
@@ -1731,7 +1731,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #             f"{PAYLOAD_URL}/logs",
 #             headers=PAYLOAD_HEADERS,
 #             json=body,
-#             timeout=5,
+#             timeout=15,
 #         )
 #     except Exception as e:
 #         logging.error(f"Payload log error: {e}")
@@ -1743,7 +1743,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #         res = requests.get(
 #             f"{PAYLOAD_URL}/plans/{plan_id}",
 #             headers=PAYLOAD_HEADERS,
-#             timeout=5,
+#             timeout=15,
 #         )
 #         if res.status_code != 200:
 #             raise HTTPException(status_code=400, detail="Plan not found in Payload")
@@ -1766,7 +1766,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                 "api_key":     api_key,
 #                 "description": description,
 #             },
-#             timeout=5,
+#             timeout=15,
 #         )
 #         if res.status_code not in (200, 201):
 #             logging.error(f"Payload api-key mirror failed: {res.status_code} {res.text}")
@@ -1782,7 +1782,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #             f"{PAYLOAD_URL}/api-credits",
 #             headers=PAYLOAD_HEADERS,
 #             params={"where[user_id][equals]": str(payload_user_id)},
-#             timeout=5,
+#             timeout=15,
 #         )
 #         data = res.json()
 #         docs = data.get("docs", [])
@@ -1794,7 +1794,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                 f"{PAYLOAD_URL}/api-credits/{doc_id}",
 #                 headers=PAYLOAD_HEADERS,
 #                 json={"credits_remaining": credits},
-#                 timeout=5,
+#                 timeout=15,
 #             )
 #         else:
 #             # Create new
@@ -1805,7 +1805,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                     "user_id":           str(payload_user_id),
 #                     "credits_remaining": credits,
 #                 },
-#                 timeout=5,
+#                 timeout=15,
 #             )
 #     except Exception as e:
 #         logging.error(f"Payload api-credits mirror error: {e}")
@@ -1823,7 +1823,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                 "price":        float(price) if price else 0,
 #                 "date":         datetime.utcnow().isoformat(),
 #             },
-#             timeout=5,
+#             timeout=15,
 #         )
 #     except Exception as e:
 #         logging.error(f"Payload credit-transaction mirror error: {e}")
@@ -2176,7 +2176,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                     "status":        "success",
 #                     "transactionId": razorpay_payment_id,
 #                 },
-#                 timeout=5,
+#                 timeout=15,
 #             )
 #         except Exception as e:
 #             logging.error(f"Payload payment mirror error: {e}")
@@ -2404,7 +2404,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #         res = requests.get(
 #             f"{PAYLOAD_URL}/users/{payload_user_id}",
 #             headers=PAYLOAD_HEADERS,
-#             timeout=5,
+#             timeout=15,
 #         )
 #         if res.status_code == 200:
 #             return res.json()
@@ -2427,7 +2427,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                 "subscriptionStatus": "trial",
 #                 "usageCount":         0,
 #             },
-#             timeout=5,
+#             timeout=15,
 #         )
 #         return res.json().get("doc")
 #     except Exception as e:
@@ -2442,7 +2442,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #             f"{PAYLOAD_URL}/users/{payload_user_id}",
 #             headers=PAYLOAD_HEADERS,
 #             json=data,
-#             timeout=5,
+#             timeout=15,
 #         )
 #         if res.status_code not in (200, 201):
 #             logging.error(f"Payload update failed: {res.status_code} {res.text}")
@@ -2464,7 +2464,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #             f"{PAYLOAD_URL}/logs",
 #             headers=PAYLOAD_HEADERS,
 #             json=body,
-#             timeout=5,
+#             timeout=15,
 #         )
 #     except Exception as e:
 #         logging.error(f"Payload log error: {e}")
@@ -2476,7 +2476,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #         res = requests.get(
 #             f"{PAYLOAD_URL}/plans/{plan_id}",
 #             headers=PAYLOAD_HEADERS,
-#             timeout=5,
+#             timeout=15,
 #         )
 #         if res.status_code != 200:
 #             raise HTTPException(status_code=400, detail="Plan not found in Payload")
@@ -2860,7 +2860,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                     "status":        "success",
 #                     "transactionId": razorpay_payment_id,
 #                 },
-#                 timeout=5,
+#                 timeout=15,
 #             )
 #         except Exception as e:
 #             logging.error(f"Payload payment record error: {e}")
@@ -3037,7 +3037,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #         res = requests.get(
 #             f"{PAYLOAD_URL}/plans/{plan_id}",
 #             headers=HEADERS,
-#             timeout=5
+#             timeout=15
 #         )
 #         return res.json()
 #     except Exception as e:
@@ -3512,7 +3512,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #             f"{PAYLOAD_URL}/users",
 #             params={"where[email][equals]": email},
 #             headers=HEADERS,
-#             timeout=5
+#             timeout=15
 #         ).json()
 
 #         if existing.get("docs"):
@@ -3529,7 +3529,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                 "subscriptionStatus": "trial"
 #             },
 #             headers=HEADERS,
-#             timeout=5
+#             timeout=15
 #         )
 
 #         return {"status": "synced"}
@@ -3614,7 +3614,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                 "active": True,
 #             },
 #             headers=HEADERS,
-#             timeout=5
+#             timeout=15
 #         )
 #     except Exception as e:
 #         logging.warning(f"Failed to sync api key to Payload: {e}")
@@ -4083,7 +4083,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 # #             f"{PAYLOAD_URL}/users",
 # #             params={"where[email][equals]": email},
 # #             headers=HEADERS,
-# #             timeout=5
+# #             timeout=15
 # #         ).json()
 
 # #         if existing.get("docs"):
@@ -4102,7 +4102,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
                 
 # #             },
 # #             headers=HEADERS,
-# #             timeout=5
+# #             timeout=15
 # #         )
 
 # #         return response.json()
@@ -4149,7 +4149,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #             # plans_response = requests.get(
 #             #     f"{PAYLOAD_URL}/plans/{plan_id}",
 #             #     headers=HEADERS,
-#             #     timeout=5
+#             #     timeout=15
 #             # ).json()
 
 #             # usage_limit = plans_response.get("doc", {}).get("usageLimit")
@@ -4180,7 +4180,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #                 #     f"{PAYLOAD_URL}/users/{user_id}",
 #                 #     json={"subscriptionStatus": "expired"},
 #                 #     headers=HEADERS,
-#                 #     timeout=5
+#                 #     timeout=15
 #                 # )
 #                 raise HTTPException(status_code=403, detail="Subscription expired.")
 
@@ -4209,7 +4209,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #         #     f"{PAYLOAD_URL}/users/{user_id}",
 #         #     json={"usageCount": usage_count + 1},
 #         #     headers=HEADERS,
-#         #     timeout=5
+#         #     timeout=15
 #         # )
 
 #         return Response(content=svg_result, media_type="image/svg+xml")
@@ -4227,7 +4227,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #         # pricing_response = requests.get(
 #         #     f"{PAYLOAD_URL}/plans/{plan_id}",
 #         #     headers=HEADERS,
-#         #     timeout=5
+#         #     timeout=15
 #         # ).json()
 
 #         # print("Pricing response:", pricing_response)
@@ -4283,7 +4283,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #         #     f"{PAYLOAD_URL}/users",
 #         #     params={"where[email][equals]": email},
 #         #     headers=HEADERS,
-#         #     timeout=5
+#         #     timeout=15
 #         # ).json()
 
 #         # if not payload_user.get("docs"):
@@ -4305,7 +4305,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #         # pricing_response = requests.get(
 #         #     f"{PAYLOAD_URL}/plans/{plan_id}",
 #         #     headers=HEADERS,
-#         #     timeout=5
+#         #     timeout=15
 #         # ).json()
 
 #         # # 🔎 Fetch plan data
@@ -4331,7 +4331,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #             #         "usageCount": 0
 #             #     },
 #             #     headers=HEADERS,
-#             #     timeout=5
+#             #     timeout=15
 #             # )
 
 #         # 🔥 Handle API credit purchase
@@ -4341,7 +4341,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #             #     f"{PAYLOAD_URL}/api-credits",
 #             #     params={"where[user_id][equals]": user_id},
 #             #     headers=HEADERS,
-#             #     timeout=5
+#             #     timeout=15
 #             # ).json()
 
 #             # if credits_response.get("docs"):
@@ -4354,7 +4354,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #             #     #         "credits_remaining": credit_doc["credits_remaining"] + usage_limit
 #             #     #     },
 #             #     #     headers=HEADERS,
-#             #     #     timeout=5
+#             #     #     timeout=15
 #             #     # )
 
 #             # else:
@@ -4366,7 +4366,7 @@ async def revoke_api_key(key_id: str, authorization: str = Header(None)):
 #             #             "credits_remaining": usage_limit
 #             #         },
 #             #         headers=HEADERS,
-#             #         timeout=5
+#             #         timeout=15
 #             #     )
 #         supabase.table("credit_transactions").insert({
 #              "user_id": user_id,
