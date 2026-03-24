@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timedelta
 import razorpay
 from supabase import create_client, Client
-from .png_to_svg import png_to_svg
+from png_to_svg import png_to_svg
 import requests
 
 # -----------------------------
