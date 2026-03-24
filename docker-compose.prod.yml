@@ -1,0 +1,140 @@
+# Production Docker Compose Configuration
+# Use this for production deployments with additional services and security
+
+version: '3.8'
+
+services:
+  pngtosvg-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pngtosvg-api-prod
+    
+    ports:
+      - "8000:8000"
+    
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
+      - PAYLOAD_URL=${PAYLOAD_URL}
+      - PAYLOAD_SECRET=${PAYLOAD_SECRET}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - ENVIRONMENT=production
+    
+    volumes:
+      - pngtosvg-temp:/app/temp
+      - pngtosvg-logs:/app/logs
+    
+    restart: always
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    networks:
+      - pngtosvg-prod-network
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    
+    depends_on:
+      - nginx
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    image: nginx:alpine
+    container_name: pngtosvg-nginx
+    
+    ports:
+      - "80:80"
+      - "443:443"
+    
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    
+    depends_on:
+      - pngtosvg-api
+    
+    networks:
+      - pngtosvg-prod-network
+    
+    restart: always
+    
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: PostgreSQL for enhanced data persistence
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: pngtosvg-postgres
+  #   environment:
+  #     POSTGRES_USER: ${DB_USER}
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD}
+  #     POSTGRES_DB: ${DB_NAME}
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   networks:
+  #     - pngtosvg-prod-network
+  #   restart: always
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  # Optional: Redis for caching
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: pngtosvg-redis
+  #   volumes:
+  #     - redis-data:/data
+  #   networks:
+  #     - pngtosvg-prod-network
+  #   restart: always
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+networks:
+  pngtosvg-prod-network:
+    driver: bridge
+
+volumes:
+  pngtosvg-temp:
+    driver: local
+  pngtosvg-logs:
+    driver: local
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
