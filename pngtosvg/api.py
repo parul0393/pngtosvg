@@ -514,20 +514,39 @@ async def create_order(
     plan_id:       str = Form(...),
     authorization: str = Header(None),
 ):
-    get_supabase_user(authorization)
+    try:
+        get_supabase_user(authorization)
 
-    plan   = get_plan_from_payload(plan_id)
-    amount = plan.get("price")
-    if not amount:
-        raise HTTPException(status_code=400, detail="Plan price not set in Payload")
+        plan   = get_plan_from_payload(plan_id)
+        amount = plan.get("price")
+        if not amount:
+            raise HTTPException(status_code=400, detail="Plan price not set in Payload")
 
-    order = razorpay_client.order.create({
-        "amount":          int(float(amount) * 100),
-        "currency":        "INR",
-        "payment_capture": 1,
-    })
+        order = razorpay_client.order.create({
+            "amount":          int(float(amount) * 100),
+            "currency":        "INR",
+            "payment_capture": 1,
+        })
 
-    return {"order_id": order["id"], "amount": order["amount"], "key": RAZORPAY_KEY_ID}
+        return {"order_id": order["id"], "amount": order["amount"], "key": RAZORPAY_KEY_ID}
+    
+    except HTTPException:
+        raise
+    except requests.exceptions.ConnectionError as e:
+        logging.error(f"Razorpay connection error: {e}")
+        raise HTTPException(status_code=503, detail="Payment service temporarily unavailable. Please try again.")
+    except requests.exceptions.Timeout as e:
+        logging.error(f"Razorpay timeout: {e}")
+        raise HTTPException(status_code=504, detail="Payment service timeout. Please try again.")
+    except razorpay.errors.BadRequestError as e:
+        logging.error(f"Razorpay bad request: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid payment request: {str(e)}")
+    except razorpay.errors.ServerError as e:
+        logging.error(f"Razorpay server error: {e}")
+        raise HTTPException(status_code=502, detail="Payment service error. Please try again.")
+    except Exception as e:
+        logging.error(f"Unexpected error in create_order: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error creating payment order: {str(e)}")
 
 
 # ── VERIFY PAYMENT ────────────────────────────────────────────────────────────
