@@ -18,7 +18,7 @@ from .png_to_svg import png_to_svg
 SUPABASE_URL         = "https://pswlpjqonxynzxsdyjud.supabase.co"
 SUPABASE_SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBzd2xwanFvbnh5bnp4c2R5anVkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjAwNzQxMCwiZXhwIjoyMDg3NTgzNDEwfQ.nWsrDi03y4c_Tde4TPoZJ5nUq55zorQPEmivr3UqR5U"
 
-PAYLOAD_URL          = "http://localhost:3000/api"
+PAYLOAD_URL          = "https://admin-panell-beta.vercel.app/api"
 PAYLOAD_SECRET       = "e7be7f67ce829de0fbe6a19c"
 PAYLOAD_ADMIN_EMAIL  = "parull0410@gmail.com"
 PAYLOAD_ADMIN_PASS   = "123456"
