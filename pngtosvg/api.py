@@ -10,7 +10,12 @@ import requests
 from datetime import datetime, timedelta
 import razorpay
 from supabase import create_client, Client
-from .png_to_svg import png_to_svg
+try:
+    # Works when imported as package module (e.g. pngtosvg.api)
+    from .png_to_svg import png_to_svg
+except ImportError:
+    # Works when run as top-level module in Docker (uvicorn api:app)
+    from png_to_svg import png_to_svg
 
 # ─────────────────────────────────────────
 # CONFIG

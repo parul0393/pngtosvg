@@ -7,22 +7,9 @@ services:
       dockerfile: Dockerfile
     container_name: pngtosvg-api
     ports:
-      - "8000:8000"
-    environment:
-      # Supabase Configuration
-      - SUPABASE_URL=https://pswlpjqonxynzxsdyjud.supabase.co
-      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBzd2xwanFvbnh5bnp4c2R5anVkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjAwNzQxMCwiZXhwIjoyMDg3NTgzNDEwfQ.nWsrDi03y4c_Tde4TPoZJ5nUq55zorQPEmivr3UqR5U}
-      
-      # Razorpay Configuration
-      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID:-rzp_test_RmG7hznjlclBga}
-      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET:-YvACC6VRdicCORe4qH10Q05l}
-      
-      # Payload Configuration
-      - PAYLOAD_URL=${PAYLOAD_URL:-http://localhost:3000/api}
-      - PAYLOAD_SECRET=${PAYLOAD_SECRET:-e7be7f67ce829de0fbe6a19c}
-      
-      # CORS Configuration
-      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:5173}
+      - "8010:8000"
+    env_file:
+      - .env
     
     volumes:
       # Mount the temp directory for file persistence
