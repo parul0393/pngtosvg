@@ -10,12 +10,15 @@ import requests
 from datetime import datetime, timedelta
 import razorpay
 from supabase import create_client, Client
-try:
-    # Works when imported as package module (e.g. pngtosvg.api)
-    from .png_to_svg import png_to_svg
-except ImportError:
-    # Works when run as top-level module in Docker (uvicorn api:app)
-    from png_to_svg import png_to_svg
+# Import png_to_svg without a broad ``except ImportError``: loading that module
+# can raise ImportError for missing deps (e.g. cv2, sklearn); catching that and
+# falling through to ``from png_to_svg`` hides the real error and often fails
+# with ModuleNotFoundError when the app is started as ``pngtosvg.api:app``.
+if not __package__:
+    # e.g. ``uvicorn api:app`` with cwd set to this directory (Docker)
+    from png_to_svg import convert_png_to_svg
+else:
+    from .png_to_svg import convert_png_to_svg
 
 # ─────────────────────────────────────────
 # CONFIG
